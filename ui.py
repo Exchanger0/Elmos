@@ -1,13 +1,9 @@
-import sys
-
-import numpy as np
-import sympy as sm
-import random as rand
-from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, \
-    QWidget, QLineEdit, QHBoxLayout, QScrollArea, QColorDialog
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT
+import mat
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit, QHBoxLayout, QColorDialog, \
+    QMainWindow, QScrollArea
+from matplotlib.backends.backend_qt import NavigationToolbar2QT
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-from matplotlib.lines import Line2D
 
 
 class CustomizeLineWindow(QWidget):
@@ -62,30 +58,13 @@ class CustomizeLineWindow(QWidget):
         self.canvas.draw()
 
 
-class Graph:
-
-    __colors = ['#4242fd', '#008000', '#ff0000', '#2dbbbb', '#be08be', '#b9b93d', '#000000']
-
-    def __init__(self, func=None, line=None, have_args=False):
-        self.func = func
-        self.line = line if line is not None else Line2D([], [], color=rand.choice(self.__colors))
-        self.have_args = have_args
-
-    def update(self, x_vals):
-        if self.func is not None and self.line is not None:
-            y_vals = self.func(x_vals) if self.have_args else [self.func()] * len(x_vals)
-            self.line.set_data(x_vals, y_vals)
-
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.scale_factor = 1
-        self.graphs = []
-        self.input_graphs = {}
+        self.widget_to_graph = {}
 
-        self.setWindowTitle("Desmos")
+        self.setWindowTitle("Elmos")
         self.setGeometry(100, 100, 1200, 800)
 
         self.mwidget = QWidget()
@@ -99,7 +78,9 @@ class MainWindow(QMainWindow):
         self.ax.set_xlim(-10, 10)
         self.ax.set_ylim(-10, 10)
         self.ax.grid(True)
-        self.figure.canvas.mpl_connect('draw_event', lambda event: self.redraw())
+
+        self.figure.canvas.mpl_connect('draw_event',
+                                       lambda event: mat.update(self.widget_to_graph.values(), self.ax))
 
         self.navbar = NavigationToolbar2QT(self.canvas, self)
 
@@ -119,7 +100,6 @@ class MainWindow(QMainWindow):
 
         self.add_input_field_btn = QPushButton("+")
         self.add_input_field_btn.clicked.connect(self.add_input_field)
-
 
         self.scroll_content = QWidget()
         self.scroll_layout = QVBoxLayout(self.scroll_content)
@@ -156,14 +136,14 @@ class MainWindow(QMainWindow):
         lay1.addWidget(label)
         lay1.addWidget(text)
 
-        draw_btn = QPushButton("Draw")
-        draw_btn.clicked.connect(lambda: self.plot(text.text(), self.input_graphs[parent]))
+        draw_btn = QPushButton("Нарисовать")
+        draw_btn.clicked.connect(lambda: self.draw(text.text(), self.widget_to_graph[parent]))
 
-        delete_btn = QPushButton("Delete")
-        delete_btn.clicked.connect(lambda: self.delete_graph(parent, self.input_graphs[parent]))
+        delete_btn = QPushButton("Удалить")
+        delete_btn.clicked.connect(lambda: self.delete_graph(parent, self.widget_to_graph[parent]))
 
-        customize_btn = QPushButton("Customize")
-        customize_btn.clicked.connect(lambda: self.open_settings(self.input_graphs[parent]))
+        customize_btn = QPushButton("Параметры")
+        customize_btn.clicked.connect(lambda: self.open_settings(self.widget_to_graph[parent]))
 
         lay2 = QHBoxLayout()
         lay2.setSpacing(5)
@@ -174,66 +154,28 @@ class MainWindow(QMainWindow):
 
         main_lay.addLayout(lay1)
         main_lay.addLayout(lay2)
-        self.input_graphs[parent] = Graph()
+        self.widget_to_graph[parent] = mat.Graph()
 
         self.scroll_layout.addWidget(parent)
-
-    def delete_graph(self, parent, graph: Graph):
-        if parent in self.input_graphs:
-            del self.input_graphs[parent]
-        self.scroll_layout.removeWidget(parent)
-        parent.deleteLater()
-        if graph.line is not None:
-            if graph.line in self.ax.get_lines():
-                graph.line.remove()
-                self.canvas.draw()
-
-    @staticmethod
-    def calculate_num_points(x_min, x_max, base_points=1000, base_range=20):
-        current_range = x_max - x_min
-        zoom_factor = base_range / current_range if current_range != 0 else 1.0
-        num_points = int(base_points * zoom_factor)
-
-        num_points = max(num_points, 1000)
-        num_points = min(num_points, 10000)
-
-        return num_points
-
-    def plot(self, text_func: str, graph: Graph):
-        try:
-            sympy_expr = sm.sympify(text_func)
-            x_min, x_max = self.ax.get_xlim()
-            x = sm.symbols("x")
-            if x in sympy_expr.free_symbols:
-                func = sm.lambdify(x, sympy_expr, "numpy")
-                have_args = True
-            else:
-                func = sm.lambdify([], sympy_expr, "numpy")
-                have_args = False
-
-            graph.func = func
-            graph.have_args = have_args
-            graph.update(np.linspace(x_min, x_max, self.calculate_num_points(x_min, x_max)))
-
-            if graph.line not in self.ax.get_lines():
-                self.ax.add_line(graph.line)
-
-            self.canvas.draw()
-
-        except Exception as e:
-            print(f"Ошибка: {e}")
-
-    def redraw(self):
-        x_min, x_max = self.ax.get_xlim()
-
-        num_points = self.calculate_num_points(x_min, x_max)
-        x_vals = np.linspace(x_min, x_max,  num_points)
-        for graph in self.input_graphs.values():
-            graph.update(x_vals)
 
     def home(self):
         self.ax.set_xlim(-10, 10)
         self.ax.set_ylim(-10, 10)
+        self.canvas.draw()
+
+    def draw(self, text, graph):
+        mat.plot(text, graph, self.ax)
+        self.canvas.draw()
+
+    def delete_graph(self, parent, graph):
+        del self.widget_to_graph[parent]
+        self.scroll_layout.removeWidget(parent)
+        parent.deleteLater()
+
+        mat.delete_graph(graph, self.ax)
+
+        if len(self.ax.get_legend_handles_labels()[0]) != 0:
+            self.ax.legend()
         self.canvas.draw()
 
     def on_scroll(self, event):
@@ -256,11 +198,5 @@ class MainWindow(QMainWindow):
         self.ax.set_ylim([center_y - cur_yrange * scale_factor,
                           center_y + cur_yrange * scale_factor])
 
-        self.redraw()
+        mat.update(self.widget_to_graph.values(), self.ax)
         self.canvas.draw()
-
-
-app = QApplication(sys.argv)
-w = MainWindow()
-w.show()
-app.exec()
