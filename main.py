@@ -2,18 +2,20 @@ import sys
 
 import numpy as np
 import sympy as sm
+import random as rand
 from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, \
-    QWidget, QLineEdit, QHBoxLayout, QScrollArea
+    QWidget, QLineEdit, QHBoxLayout, QScrollArea, QColorDialog
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 
-class CustomSettingsWindow(QWidget):
-    def __init__(self, ax, canvas):
+class CustomizeLineWindow(QWidget):
+    def __init__(self, graph, canvas, ax):
         super().__init__()
-        self.ax = ax
+        self.graph = graph
         self.canvas = canvas
+        self.ax = ax
         self.initUI()
 
     def initUI(self):
@@ -22,59 +24,51 @@ class CustomSettingsWindow(QWidget):
 
         layout = QVBoxLayout()
 
-        xmin, xmax = self.ax.get_xlim()
-        ymin, ymax = self.ax.get_ylim()
+        self.color = self.graph.line.get_color()
+        self.color_label = QLabel(f"Выбранный цвет: {self.graph.line.get_color()}")
+        self.color_label.setStyleSheet(f"background-color: {self.graph.line.get_color()}; color: white;")
 
-        # Поля для настройки осей X и Y
-        self.xmin_input = QLineEdit(self)
-        self.xmin_input.setText(str(xmin))
-        layout.addWidget(QLabel("Минимум X:"))
-        layout.addWidget(self.xmin_input)
+        self.color_button = QPushButton("Выбрать цвет")
+        self.color_button.clicked.connect(self.pick_color)
 
-        self.xmax_input = QLineEdit(self)
-        self.xmax_input.setText(str(xmax))
-        layout.addWidget(QLabel("Максимум X:"))
-        layout.addWidget(self.xmax_input)
+        self.title_label = QLabel("Метка:")
+        label = self.graph.line.get_label()
+        self.title_field = QLineEdit("" if label[0] == "_" else label)
+        lay = QHBoxLayout()
+        lay.addWidget(self.title_label)
+        lay.addWidget(self.title_field)
 
-        self.ymin_input = QLineEdit(self)
-        self.ymin_input.setText(str(ymin))
-        layout.addWidget(QLabel("Минимум Y:"))
-        layout.addWidget(self.ymin_input)
-
-        self.ymax_input = QLineEdit(self)
-        self.ymax_input.setText(str(ymax))
-        layout.addWidget(QLabel("Максимум Y:"))
-        layout.addWidget(self.ymax_input)
-
-        # Кнопка применения настроек
         self.apply_button = QPushButton('Применить', self)
         self.apply_button.clicked.connect(self.apply_settings)
+
+        layout.addWidget(self.color_label)
+        layout.addWidget(self.color_button)
+        layout.addLayout(lay)
         layout.addWidget(self.apply_button)
 
         self.setLayout(layout)
 
+    def pick_color(self):
+        color = QColorDialog.getColor()
+        if color.isValid():
+            self.color = color.name()
+            self.color_label.setText(f"Выбранный цвет: {self.color}")
+            self.color_label.setStyleSheet(f"background-color: {self.color}; color: white;")
+
     def apply_settings(self):
-        try:
-            # Устанавливаем новые лимиты осей
-            xmin = float(self.xmin_input.text())
-            xmax = float(self.xmax_input.text())
-            ymin = float(self.ymin_input.text())
-            ymax = float(self.ymax_input.text())
-
-            self.ax.set_xlim([xmin, xmax])
-            self.ax.set_ylim([ymin, ymax])
-
-            # Обновляем график
-            self.canvas.draw()
-        except ValueError:
-            print("Ошибка: введите корректные числовые значения")
+        self.graph.line.set_color(self.color)
+        self.graph.line.set_label(self.title_field.text().replace("_", ""))
+        self.ax.legend()
+        self.canvas.draw()
 
 
 class Graph:
 
+    __colors = ['#4242fd', '#008000', '#ff0000', '#2dbbbb', '#be08be', '#b9b93d', '#000000']
+
     def __init__(self, func=None, line=None, have_args=False):
         self.func = func
-        self.line = line if line is not None else Line2D([], [])
+        self.line = line if line is not None else Line2D([], [], color=rand.choice(self.__colors))
         self.have_args = have_args
 
     def update(self, x_vals):
@@ -110,7 +104,7 @@ class MainWindow(QMainWindow):
         self.navbar = NavigationToolbar2QT(self.canvas, self)
 
         actions = self.navbar.actions()
-        delete_actions = ["Back", "Forward", "Zoom", "Subplots"]
+        delete_actions = ["Back", "Forward", "Zoom", "Subplots", "Customize"]
         for action in actions:
             if action.text() in delete_actions:
                 self.navbar.removeAction(action)
@@ -122,10 +116,6 @@ class MainWindow(QMainWindow):
                 action.setToolTip("Сохранить график")
             elif action.text() == "Pan":
                 action.setToolTip("Перемещать график")
-            elif action.text() == "Customize":
-                action.setToolTip("Настройки графика")
-                action.triggered.disconnect()
-                action.triggered.connect(self.open_settings)
 
         self.add_input_field_btn = QPushButton("+")
         self.add_input_field_btn.clicked.connect(self.add_input_field)
@@ -145,9 +135,8 @@ class MainWindow(QMainWindow):
         self.lay.addWidget(self.add_input_field_btn)
         self.lay.addWidget(self.scroll_area)
 
-    def open_settings(self):
-        # Открываем окно настроек
-        self.settings_window = CustomSettingsWindow(self.ax, self.canvas)
+    def open_settings(self, graph):
+        self.settings_window = CustomizeLineWindow(graph, self.canvas, self.ax)
         self.settings_window.show()
 
     def add_input_field(self):
@@ -172,13 +161,16 @@ class MainWindow(QMainWindow):
 
         delete_btn = QPushButton("Delete")
         delete_btn.clicked.connect(lambda: self.delete_graph(parent, self.input_graphs[parent]))
-        # delete_btn.clicked.connect(lambda: self.scroll_layout.removeWidget(parent))
+
+        customize_btn = QPushButton("Customize")
+        customize_btn.clicked.connect(lambda: self.open_settings(self.input_graphs[parent]))
 
         lay2 = QHBoxLayout()
         lay2.setSpacing(5)
         lay2.setContentsMargins(0, 0, 0, 0)
         lay2.addWidget(draw_btn)
         lay2.addWidget(delete_btn)
+        lay2.addWidget(customize_btn)
 
         main_lay.addLayout(lay1)
         main_lay.addLayout(lay2)
@@ -187,20 +179,14 @@ class MainWindow(QMainWindow):
         self.scroll_layout.addWidget(parent)
 
     def delete_graph(self, parent, graph: Graph):
-        print("hello")
-        try:
-            print(parent in self.input_graphs)
-            if parent in self.input_graphs:
-                del self.input_graphs[parent]
-            self.scroll_layout.removeWidget(parent)
-            parent.deleteLater()
-            if graph.line is not None:
-                if graph.line in self.ax.get_lines():
-                    graph.line.remove()
-                    self.canvas.draw()
-            print(1)
-        except Exception as e:
-            print("Error:", e)
+        if parent in self.input_graphs:
+            del self.input_graphs[parent]
+        self.scroll_layout.removeWidget(parent)
+        parent.deleteLater()
+        if graph.line is not None:
+            if graph.line in self.ax.get_lines():
+                graph.line.remove()
+                self.canvas.draw()
 
     @staticmethod
     def calculate_num_points(x_min, x_max, base_points=1000, base_range=20):
@@ -242,7 +228,6 @@ class MainWindow(QMainWindow):
 
         num_points = self.calculate_num_points(x_min, x_max)
         x_vals = np.linspace(x_min, x_max,  num_points)
-        print("points:", num_points)
         for graph in self.input_graphs.values():
             graph.update(x_vals)
 
@@ -252,7 +237,6 @@ class MainWindow(QMainWindow):
         self.canvas.draw()
 
     def on_scroll(self, event):
-        # get the current x and y limits
         cur_xlim = self.ax.get_xlim()
         cur_ylim = self.ax.get_ylim()
         cur_xrange = (cur_xlim[1] - cur_xlim[0]) / 2
@@ -261,16 +245,12 @@ class MainWindow(QMainWindow):
         center_y = (cur_ylim[0] + cur_ylim[1]) / 2
         base_scale = 1.05
         if event.button == 'up':
-            # deal with zoom in
             scale_factor = 1 / base_scale
         elif event.button == 'down':
-            # deal with zoom out
             scale_factor = base_scale
         else:
-            # deal with something that should never happen
             scale_factor = 1
         self.scale_factor = scale_factor
-        # set new limits
         self.ax.set_xlim([center_x - cur_xrange * scale_factor,
                           center_x + cur_xrange * scale_factor])
         self.ax.set_ylim([center_y - cur_yrange * scale_factor,
