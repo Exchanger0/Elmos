@@ -29,7 +29,7 @@ class CustomizeLineWindow(QWidget):
 
         self.title_label = QLabel("Метка:")
         label = self.graph.line.get_label()
-        self.title_field = QLineEdit("" if label[0] == "_" else label)
+        self.title_field = QLineEdit("" if not label or label[0] == "_" else label)
         lay = QHBoxLayout()
         lay.addWidget(self.title_label)
         lay.addWidget(self.title_field)
@@ -43,6 +43,7 @@ class CustomizeLineWindow(QWidget):
         layout.addWidget(self.apply_button)
 
         self.setLayout(layout)
+
 
     def pick_color(self):
         color = QColorDialog.getColor()
@@ -174,8 +175,11 @@ class MainWindow(QMainWindow):
 
         mat.delete_graph(graph, self.ax)
 
-        if len(self.ax.get_legend_handles_labels()[0]) != 0:
+        if len(self.ax.get_legend_handles_labels()[0]) == 0:
+            self.ax.legend_ = None
+        else:
             self.ax.legend()
+
         self.canvas.draw()
 
     def on_scroll(self, event):
