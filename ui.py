@@ -1,9 +1,58 @@
+import re
+
 import mat
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit, QHBoxLayout, QColorDialog, \
-    QMainWindow, QScrollArea
+    QMainWindow, QScrollArea, QCheckBox, QButtonGroup
 from matplotlib.backends.backend_qt import NavigationToolbar2QT
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
+
+
+class ChangeLimWidget(QWidget):
+    def __init__(self, title, lim: mat.Graph.Lim):
+        super().__init__()
+
+        self.lim = lim
+
+        group = QButtonGroup(self)
+        group.setExclusive(True)
+
+        self.label = QLabel(title, self)
+        self.checkbox1 = QCheckBox("Динамически", self)
+        self.checkbox1.setTristate(False)
+        self.checkbox2 = QCheckBox("Установить самому", self)
+        self.checkbox2.setTristate(False)
+        self.text_field = QLineEdit(self)
+        self.text_field.setVisible(False)
+
+        self.checkbox2.stateChanged.connect(self.toggle_text_field)
+
+        group.addButton(self.checkbox1)
+        group.addButton(self.checkbox2)
+
+        if not lim.is_dynamic:
+            self.checkbox2.setChecked(True)
+            self.text_field.setText(str(lim.value))
+        else:
+            self.checkbox1.setChecked(True)
+
+        layout = QVBoxLayout()
+        layout.addWidget(self.label)
+        layout.addWidget(self.checkbox1)
+        layout.addWidget(self.checkbox2)
+        layout.addWidget(self.text_field)
+
+        self.setLayout(layout)
+
+    def toggle_text_field(self, state):
+        self.text_field.setVisible(state == 2)
+
+    def apply_settings(self):
+        if self.checkbox2.isChecked() and re.fullmatch(r"-?\d+\.?\d*", self.text_field.text().strip()):
+            self.lim.is_dynamic = self.checkbox1.isChecked()
+            self.lim.value = float(self.text_field.text().strip())
+        elif self.checkbox1.isChecked():
+            self.lim.is_dynamic = True
 
 
 class CustomizeLineWindow(QWidget):
@@ -34,16 +83,35 @@ class CustomizeLineWindow(QWidget):
         lay.addWidget(self.title_label)
         lay.addWidget(self.title_field)
 
+        self.xmin_widget = ChangeLimWidget("X min", self.graph.x_min)
+        self.xmax_widget = ChangeLimWidget("X max", self.graph.x_max)
+        xlim_lay = QHBoxLayout()
+        xlim_lay.setSpacing(10)
+        xlim_lay.addWidget(self.xmin_widget)
+        xlim_lay.addWidget(self.xmax_widget)
+
+        self.ymin_widget = ChangeLimWidget("Y min", self.graph.y_min)
+        self.ymax_widget = ChangeLimWidget("Y max", self.graph.y_max)
+        ylim_lay = QHBoxLayout()
+        ylim_lay.setSpacing(10)
+        ylim_lay.addWidget(self.ymin_widget)
+        ylim_lay.addWidget(self.ymax_widget)
+
         self.apply_button = QPushButton('Применить', self)
         self.apply_button.clicked.connect(self.apply_settings)
 
         layout.addWidget(self.color_label)
         layout.addWidget(self.color_button)
         layout.addLayout(lay)
+        layout.addLayout(xlim_lay)
+        layout.addLayout(ylim_lay)
+        # layout.addWidget(self.xmin_widget)
+        # layout.addWidget(self.xmax_widget)
+        # layout.addWidget(self.ymin_widget)
+        # layout.addWidget(self.ymax_widget)
         layout.addWidget(self.apply_button)
 
         self.setLayout(layout)
-
 
     def pick_color(self):
         color = QColorDialog.getColor()
@@ -55,8 +123,23 @@ class CustomizeLineWindow(QWidget):
     def apply_settings(self):
         self.graph.line.set_color(self.color)
         self.graph.line.set_label(self.title_field.text().replace("_", ""))
+        self.xmin_widget.apply_settings()
+        self.xmax_widget.apply_settings()
+        self.ymin_widget.apply_settings()
+        self.ymax_widget.apply_settings()
         self.ax.legend()
         self.canvas.draw()
+
+
+class RedrawCanvas(FigureCanvasQTAgg):
+
+    def __init__(self, figure=None, main_w=None):
+        super().__init__(figure)
+        self.main_v = main_w
+
+    def draw(self, *args, **kwargs):
+        self.main_v.redraw()
+        super().draw()
 
 
 class MainWindow(QMainWindow):
@@ -72,16 +155,13 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.mwidget)
 
         self.figure = Figure()
-        self.canvas = FigureCanvasQTAgg(self.figure)
+        self.canvas = RedrawCanvas(self.figure, self)
         self.canvas.mpl_connect("scroll_event", self.on_scroll)
 
         self.ax = self.figure.add_subplot()
         self.ax.set_xlim(-10, 10)
         self.ax.set_ylim(-10, 10)
         self.ax.grid(True)
-
-        self.figure.canvas.mpl_connect('draw_event',
-                                       lambda event: mat.update(self.widget_to_graph.values(), self.ax))
 
         self.navbar = NavigationToolbar2QT(self.canvas, self)
 
@@ -131,7 +211,7 @@ class MainWindow(QMainWindow):
         lay1 = QHBoxLayout()
         lay1.setSpacing(0)
         lay1.setContentsMargins(0, 0, 0, 0)
-        label = QLabel("y =")
+        label = QLabel("y = ")
         text = QLineEdit()
         text.setPlaceholderText("Введите уравнение")
         lay1.addWidget(label)
@@ -168,6 +248,20 @@ class MainWindow(QMainWindow):
         mat.plot(text, graph, self.ax)
         self.canvas.draw()
 
+    def redraw(self, *args):
+        for graph in self.widget_to_graph.values():
+            x_min, x_max = self.ax.get_xlim()
+            y_min, y_max = self.ax.get_ylim()
+            if graph.x_min.is_dynamic:
+                graph.x_min.value = x_min
+            if graph.x_max.is_dynamic:
+                graph.x_max.value = x_max
+            if graph.y_min.is_dynamic:
+                graph.y_min.value = y_min
+            if graph.y_max.is_dynamic:
+                graph.y_max.value = y_max
+            graph.update()
+
     def delete_graph(self, parent, graph):
         del self.widget_to_graph[parent]
         self.scroll_layout.removeWidget(parent)
@@ -189,7 +283,7 @@ class MainWindow(QMainWindow):
         cur_yrange = (cur_ylim[1] - cur_ylim[0]) / 2
         center_x = (cur_xlim[0] + cur_xlim[1]) / 2
         center_y = (cur_ylim[0] + cur_ylim[1]) / 2
-        base_scale = 1.05
+        base_scale = 1.1
         if event.button == 'up':
             scale_factor = 1 / base_scale
         elif event.button == 'down':
@@ -202,5 +296,4 @@ class MainWindow(QMainWindow):
         self.ax.set_ylim([center_y - cur_yrange * scale_factor,
                           center_y + cur_yrange * scale_factor])
 
-        mat.update(self.widget_to_graph.values(), self.ax)
         self.canvas.draw()
