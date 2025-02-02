@@ -5,7 +5,6 @@ from matplotlib.lines import Line2D
 
 
 class Graph:
-
     __colors = ['#4242fd', '#008000', '#ff0000', '#2dbbbb', '#be08be', '#b9b93d', '#000000']
 
     class Lim:
@@ -27,12 +26,17 @@ class Graph:
         self.y_max = Graph.Lim(y_max, True)
 
     def update(self):
-        if self.func is not None and self.line is not None:
-            num_points = calculate_num_points(self.x_min.value, self.x_max.value)
-            x_vals = np.linspace(self.x_min.value, self.x_max.value, num_points)
-            y_vals = self.func(x_vals) if self.have_args else [self.func()] * len(x_vals)
-            y_vals = np.where((y_vals >= self.y_min.value) & (y_vals <= self.y_max.value), y_vals, np.nan)
-            self.line.set_data(x_vals, y_vals)
+        try:
+            if self.func is not None and self.line is not None:
+                num_points = calculate_num_points(self.x_min.value, self.x_max.value)
+                x_vals = np.linspace(self.x_min.value, self.x_max.value, num_points)
+                y_vals = self.func(x_vals) if self.have_args else [self.func()] * len(x_vals)
+                y_vals = np.where((y_vals >= self.y_min.value) & (y_vals <= self.y_max.value), y_vals, np.nan)
+                self.line.set_data(x_vals, y_vals)
+        except Exception:
+            self.func = None
+            self.line.set_data([], [])
+            raise Exception("Wrong function")
 
 
 def delete_graph(graph, ax):
@@ -66,7 +70,6 @@ def plot(text_func, graph, ax):
 
     if graph.line not in ax.get_lines():
         ax.add_line(graph.line)
-
 
 
 def calculate_num_points(x_min, x_max, base_points=1000, base_range=20):

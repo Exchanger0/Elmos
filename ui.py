@@ -1,8 +1,9 @@
 import re
+import traceback
 
 import mat
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit, QHBoxLayout, QColorDialog, \
-    QMainWindow, QScrollArea, QCheckBox, QButtonGroup
+    QMainWindow, QScrollArea, QCheckBox, QButtonGroup, QMessageBox
 from matplotlib.backends.backend_qt import NavigationToolbar2QT
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
@@ -105,10 +106,6 @@ class CustomizeLineWindow(QWidget):
         layout.addLayout(lay)
         layout.addLayout(xlim_lay)
         layout.addLayout(ylim_lay)
-        # layout.addWidget(self.xmin_widget)
-        # layout.addWidget(self.xmax_widget)
-        # layout.addWidget(self.ymin_widget)
-        # layout.addWidget(self.ymax_widget)
         layout.addWidget(self.apply_button)
 
         self.setLayout(layout)
@@ -245,7 +242,10 @@ class MainWindow(QMainWindow):
         self.canvas.draw()
 
     def draw(self, text, graph):
-        mat.plot(text, graph, self.ax)
+        try:
+            mat.plot(text, graph, self.ax)
+        except Exception:
+            QMessageBox.warning(self, "Error", "Wrong function")
         self.canvas.draw()
 
     def redraw(self, *args):
