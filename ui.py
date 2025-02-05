@@ -3,7 +3,7 @@ import traceback
 
 import mat
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit, QHBoxLayout, QColorDialog, \
-    QMainWindow, QScrollArea, QCheckBox, QButtonGroup, QMessageBox
+    QMainWindow, QScrollArea, QCheckBox, QButtonGroup, QMessageBox, QComboBox
 from matplotlib.backends.backend_qt import NavigationToolbar2QT
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
@@ -176,8 +176,15 @@ class MainWindow(QMainWindow):
             elif action.text() == "Pan":
                 action.setToolTip("Перемещать график")
 
+        self.gtypes = QComboBox()
+        self.gtypes.addItems(["y", "x"])
         self.add_input_field_btn = QPushButton("+")
-        self.add_input_field_btn.clicked.connect(self.add_input_field)
+        self.add_input_field_btn.clicked.connect(lambda: self.add_input_field(self.gtypes.currentText()))
+        gt_if_lay = QHBoxLayout()
+        gt_if_lay.addWidget(self.add_input_field_btn)
+        gt_if_lay.addWidget(self.gtypes)
+        gt_if_lay.setStretch(0, 2)
+        gt_if_lay.setStretch(1, 1)
 
         self.scroll_content = QWidget()
         self.scroll_layout = QVBoxLayout(self.scroll_content)
@@ -190,14 +197,14 @@ class MainWindow(QMainWindow):
         self.lay = QVBoxLayout(self.mwidget)
         self.lay.addWidget(self.canvas)
         self.lay.addWidget(self.navbar)
-        self.lay.addWidget(self.add_input_field_btn)
+        self.lay.addLayout(gt_if_lay)
         self.lay.addWidget(self.scroll_area)
 
     def open_settings(self, graph):
         self.settings_window = CustomizeLineWindow(graph, self.canvas, self.ax)
         self.settings_window.show()
 
-    def add_input_field(self):
+    def add_input_field(self, gtype):
         parent = QWidget()
         parent.setMaximumHeight(130)
         main_lay = QVBoxLayout()
@@ -208,14 +215,14 @@ class MainWindow(QMainWindow):
         lay1 = QHBoxLayout()
         lay1.setSpacing(0)
         lay1.setContentsMargins(0, 0, 0, 0)
-        label = QLabel("y = ")
+        label = QLabel(gtype + " = ")
         text = QLineEdit()
         text.setPlaceholderText("Введите уравнение")
         lay1.addWidget(label)
         lay1.addWidget(text)
 
         draw_btn = QPushButton("Нарисовать")
-        draw_btn.clicked.connect(lambda: self.draw(text.text(), self.widget_to_graph[parent]))
+        draw_btn.clicked.connect(lambda: self.draw(text.text(), self.widget_to_graph[parent], gtype))
 
         delete_btn = QPushButton("Удалить")
         delete_btn.clicked.connect(lambda: self.delete_graph(parent, self.widget_to_graph[parent]))
@@ -241,9 +248,9 @@ class MainWindow(QMainWindow):
         self.ax.set_ylim(-10, 10)
         self.canvas.draw()
 
-    def draw(self, text, graph):
+    def draw(self, text, graph, gtype):
         try:
-            mat.plot(text, graph, self.ax)
+            mat.plot(text, graph, self.ax, gtype)
         except Exception:
             QMessageBox.warning(self, "Error", "Wrong function")
         self.canvas.draw()
