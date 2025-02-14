@@ -1,87 +1,192 @@
+import inspect
+import re
+from enum import Enum
+from abc import ABC, abstractmethod
+from typing import Callable
+
 import sympy as sm
 import numpy as np
 import random as rand
+
+from matplotlib.axes import Axes
 from matplotlib.lines import Line2D
 
 
-class Graph:
+class GraphType(Enum):
+    X = "x"
+    Y = "y"
+    POINTS = "points"
+
+
+class DynamicRange:
+    def __init__(self, _min: float | None, min_is_dynamic: bool, _max: float | None, max_is_dynamic: bool):
+        self.min = _min
+        self.min_is_dynamic = min_is_dynamic
+        self.max = _max
+        self.max_is_dynamic = max_is_dynamic
+
+    def in_range(self, num: float):
+        if self.min is None and self.max is None:
+            return True
+        elif self.min is None and self.max is not None:
+            return num <= self.max
+        elif self.min is not None and self.max is None:
+            return num >= self.min
+        else:
+            return self.min <= num <= self.max
+
+
+class AbstractGraph(ABC):
     __colors = ['#4242fd', '#008000', '#ff0000', '#2dbbbb', '#be08be', '#b9b93d', '#000000']
+    graph_type: GraphType
+    line: Line2D
 
-    class Lim:
-        def __init__(self, value, is_dynamic):
-            super().__init__()
-            self.value = value
-            self.is_dynamic = is_dynamic
+    def __init__(self, graph_type: GraphType):
+        super().__init__()
+        self.graph_type = graph_type
+        self.line = Line2D([], [], color=rand.choice(self.__colors))
 
-        def __repr__(self):
-            return f"Lim(value={self.value} is_dynamic={self.is_dynamic})"
+    @abstractmethod
+    def draw(self):
+        pass
 
-    def __init__(self, func=None, line=None, have_args=False, x_min=None, x_max=None, y_min=None, y_max=None, gtype="x"):
+    @abstractmethod
+    def process_text(self, text: str):
+        pass
+
+
+class LimGraph(AbstractGraph, ABC):
+
+    def __init__(self, graph_type: GraphType, lim_x: DynamicRange | None, lim_y: DynamicRange | None ):
+        super().__init__(graph_type)
+        self.lim_x = lim_x if lim_x is not None else DynamicRange(None, True, None, True)
+        self.lim_y = lim_y if lim_y is not None else DynamicRange(None, True, None, True)
+
+    def update_lim_x(self, _min: float, _max: float):
+        if self.lim_x.min_is_dynamic:
+            self.lim_x.min = _min
+        if self.lim_x.max_is_dynamic:
+            self.lim_x.max = _max
+
+    def update_lim_y(self, _min: float, _max: float):
+        if self.lim_y.min_is_dynamic:
+            self.lim_y.min = _min
+        if self.lim_y.max_is_dynamic:
+            self.lim_y.max = _max
+
+
+class FuncGraph(LimGraph, ABC):
+    def __init__(self, graph_type: GraphType, func: Callable = None, lim_x: DynamicRange = None, lim_y: DynamicRange = None):
+        super().__init__(graph_type, lim_x, lim_y)
         self.func = func
-        self.line = line if line is not None else Line2D([], [], color=rand.choice(self.__colors))
-        self.have_args = have_args
-        self.x_min = Graph.Lim(x_min, True)
-        self.x_max = Graph.Lim(x_max, True)
-        self.y_min = Graph.Lim(y_min, True)
-        self.y_max = Graph.Lim(y_max, True)
-        self.gtype = gtype.lower()
 
-    def update(self):
+    @property
+    def func(self):
+        return self.__func
+
+    @func.setter
+    def func(self, func: Callable):
+        self.__func = func
+        if func is not None:
+            self._have_arg = len(inspect.signature(func).parameters.keys()) != 0
+        else:
+            self._have_arg = False
+
+
+class GraphY(FuncGraph):
+    def __init__(self, func: Callable = None, lim_x: DynamicRange = None, lim_y: DynamicRange = None):
+        super().__init__(GraphType.Y, func, lim_x, lim_y)
+
+    def draw(self):
         try:
-            if self.func is not None and self.line is not None:
-                if self.gtype == "y":
-                    num_points = calculate_num_points(self.x_min.value, self.x_max.value)
-                    x_vals = np.linspace(self.x_min.value, self.x_max.value, num_points)
-                    y_vals = self.func(x_vals) if self.have_args else [self.func()] * len(x_vals)
-                    y_vals = np.where((y_vals >= self.y_min.value) & (y_vals <= self.y_max.value), y_vals, np.nan)
-                    self.line.set_data(x_vals, y_vals)
-                elif self.gtype == "x":
-                    num_points = calculate_num_points(self.y_min.value, self.y_max.value)
-                    y_vals = np.linspace(self.y_min.value, self.y_max.value, num_points)
-                    x_vals = self.func(y_vals) if self.have_args else [self.func()] * len(y_vals)
-                    x_vals = np.where((x_vals >= self.x_min.value) & (x_vals <= self.x_max.value), x_vals, np.nan)
-                    self.line.set_data(x_vals, y_vals)
-        except Exception:
-            self.func = None
-            self.line.set_data([], [])
-            raise Exception("Wrong function")
+            if self.func is not None:
+                num_points = calculate_num_points(self.lim_x.min, self.lim_x.max)
+                x_vals = np.linspace(self.lim_x.min, self.lim_x.max, num_points)
+                y_vals = self.func(x_vals) if self._have_arg else [self.func()] * len(x_vals)
+                y_vals = np.where([self.lim_y.in_range(y) for y in y_vals], y_vals, np.nan)
+                self.line.set_data(x_vals, y_vals)
+        except Exception as e:
+            pass
+
+    def process_text(self, text: str):
+        sympy_expr = sm.sympify(text)
+        x = sm.symbols("x")
+        if x in sympy_expr.free_symbols:
+            self.func = sm.lambdify(x, sympy_expr, "numpy")
+        else:
+            self.func = sm.lambdify([], sympy_expr, "numpy")
 
 
-def delete_graph(graph, ax):
+class GraphX(FuncGraph):
+
+    def __init__(self, func: Callable = None, lim_x: DynamicRange = None, lim_y: DynamicRange = None):
+        super().__init__(GraphType.X, func, lim_x, lim_y)
+
+    def draw(self):
+        try:
+            if self.func is not None:
+                num_points = calculate_num_points(self.lim_y.min, self.lim_y.max)
+                y_vals = np.linspace(self.lim_y.min, self.lim_y.max, num_points)
+                x_vals = self.func(y_vals) if self._have_arg else [self.func()] * len(y_vals)
+                x_vals = np.where([self.lim_x.in_range(x) for x in x_vals], x_vals, np.nan)
+                self.line.set_data(x_vals, y_vals)
+        except:
+            pass
+
+    def process_text(self, text: str):
+        sympy_expr = sm.sympify(text)
+        y = sm.symbols("y")
+        if y in sympy_expr.free_symbols:
+            self.func = sm.lambdify(y, sympy_expr, "numpy")
+        else:
+            self.func = sm.lambdify([], sympy_expr, "numpy")
+
+
+class GraphPoints(AbstractGraph):
+
+    def __init__(self, points: list[tuple[float, float]]):
+        super().__init__(GraphType.POINTS)
+        self.__x_points = []
+        self.__y_points = []
+        self.set_points(points)
+
+    def set_points(self, points: list[tuple[float, float]]):
+        self.__x_points.clear()
+        self.__y_points.clear()
+        for x, y in points:
+            self.add_point(x, y)
+
+    def add_point(self, x, y):
+        self.__x_points.append(x)
+        self.__y_points.append(y)
+
+    def draw(self):
+        self.line.set_data(self.__x_points, self.__y_points)
+
+    def process_text(self, text: str):
+        points = []
+        for gr in re.finditer(r"(\(-?[0-9]+;-?[0-9]+\))", text.replace(" ", "")):
+            g = gr.group()
+            x = int(g[g.index("(") + 1:g.index(";")])
+            y = int(g[g.index(";") + 1:g.index(")")])
+            points.append((x, y))
+        self.set_points(points)
+
+
+def delete_graph(graph: AbstractGraph, ax: Axes):
     if graph.line is not None and graph.line in ax.get_lines():
         graph.line.remove()
 
 
-def plot(text_func, graph, ax, gtype):
-    sympy_expr = sm.sympify(text_func)
-    if gtype.lower() == "x":
-        val = sm.symbols("y")
-    elif gtype.lower() == "y":
-        val = sm.symbols("x")
-    else:
-        return
+def plot(text_func: str, graph: AbstractGraph, ax: Axes):
+    if isinstance(graph, LimGraph):
+        x_min, x_max = ax.get_xlim()
+        y_min, y_max = ax.get_ylim()
+        graph.update_lim_x(x_min, x_max)
+        graph.update_lim_y(y_min, y_max)
 
-    if val in sympy_expr.free_symbols:
-        func = sm.lambdify(val, sympy_expr, "numpy")
-        have_args = True
-    else:
-        func = sm.lambdify([], sympy_expr, "numpy")
-        have_args = False
-
-    x_min, x_max = ax.get_xlim()
-    y_min, y_max = ax.get_ylim()
-    graph.func = func
-    graph.have_args = have_args
-    graph.gtype = gtype
-    if graph.x_min.is_dynamic:
-        graph.x_min.value = x_min
-    if graph.x_max.is_dynamic:
-        graph.x_max.value = x_max
-    if graph.y_min.is_dynamic:
-        graph.y_min.value = y_min
-    if graph.y_max.is_dynamic:
-        graph.y_max.value = y_max
-    graph.update()
+    graph.process_text(text_func)
+    graph.draw()
 
     if graph.line not in ax.get_lines():
         ax.add_line(graph.line)
