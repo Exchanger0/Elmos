@@ -1,10 +1,13 @@
+import os
 import re
 
+from PyQt5.QtCore import QUrl
+from PyQt5.QtGui import QIcon
 from matplotlib.axes import Axes
 
 import mat
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit, QHBoxLayout, QColorDialog, \
-    QMainWindow, QScrollArea, QCheckBox, QButtonGroup, QMessageBox, QComboBox
+    QMainWindow, QScrollArea, QCheckBox, QButtonGroup, QMessageBox, QComboBox, QTextBrowser, QAction
 from matplotlib.backends.backend_qt import NavigationToolbar2QT
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
@@ -241,6 +244,23 @@ class InputFuncWindget(QWidget):
         self.settings_window.show()
 
 
+class DocWindow(QWidget):
+
+    def __init__(self):
+        super().__init__()
+        self.resize(500, 500)
+        layout = QVBoxLayout()
+        self.browser = QTextBrowser()
+
+        relative_path = "files/docs.html"
+        absolute_path = os.path.abspath(relative_path)
+        self.browser.setSource(QUrl.fromLocalFile(absolute_path))
+
+        layout.addWidget(self.browser)
+        self.setLayout(layout)
+        self.setWindowTitle("Documentation")
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -277,6 +297,11 @@ class MainWindow(QMainWindow):
                 action.setToolTip("Сохранить график")
             elif action.text() == "Pan":
                 action.setToolTip("Перемещать график")
+
+        self.open_docs_a = QAction("Docs")
+        self.open_docs_a.setIcon(QIcon("files/docs.png"))
+        self.open_docs_a.triggered.connect(self.open_docs)
+        self.navbar.addAction(self.open_docs_a)
 
         self.gtypes = QComboBox()
         self.gtypes.addItems(["y", "x", "points"])
@@ -352,3 +377,7 @@ class MainWindow(QMainWindow):
                           center_y + cur_yrange * scale_factor])
 
         self.canvas.draw()
+
+    def open_docs(self):
+        self.docs = DocWindow()
+        self.docs.show()

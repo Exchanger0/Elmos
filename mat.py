@@ -1,5 +1,6 @@
 import inspect
 import re
+import traceback
 from enum import Enum
 from abc import ABC, abstractmethod
 from typing import Callable
@@ -11,6 +12,16 @@ import random as rand
 from matplotlib.axes import Axes
 from matplotlib.lines import Line2D
 
+
+def logb(x, b):
+    return np.log(x) / np.log(b)
+
+
+def custom_pow(base, exp):
+    return base ** exp
+
+
+modules = ["numpy", {"logb": logb, "^": custom_pow}]
 
 class GraphType(Enum):
     X = "x"
@@ -109,12 +120,15 @@ class GraphY(FuncGraph):
             pass
 
     def process_text(self, text: str):
-        sympy_expr = sm.sympify(text)
-        x = sm.symbols("x")
-        if x in sympy_expr.free_symbols:
-            self.func = sm.lambdify(x, sympy_expr, "numpy")
-        else:
-            self.func = sm.lambdify([], sympy_expr, "numpy")
+        try:
+            sympy_expr = sm.sympify(text)
+            x = sm.symbols("x")
+            if x in sympy_expr.free_symbols:
+                self.func = sm.lambdify(x, sympy_expr, modules)
+            else:
+                self.func = sm.lambdify([], sympy_expr, modules)
+        except Exception as e:
+            traceback.print_exception(e)
 
 
 class GraphX(FuncGraph):
@@ -137,9 +151,9 @@ class GraphX(FuncGraph):
         sympy_expr = sm.sympify(text)
         y = sm.symbols("y")
         if y in sympy_expr.free_symbols:
-            self.func = sm.lambdify(y, sympy_expr, "numpy")
+            self.func = sm.lambdify(y, sympy_expr, modules)
         else:
-            self.func = sm.lambdify([], sympy_expr, "numpy")
+            self.func = sm.lambdify([], sympy_expr, modules)
 
 
 class GraphPoints(AbstractGraph):
@@ -193,8 +207,8 @@ def plot(text_func: str, graph: AbstractGraph, ax: Axes):
 
 
 def calculate_num_points(val_min, val_max, base_range=20):
-    min_points = 10000
-    max_points = 50_000
+    min_points = 5000
+    max_points = 30_000
     eps = 1e-6
     current_range = max(abs(val_max - val_min), eps)
 
