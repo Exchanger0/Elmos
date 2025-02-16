@@ -298,7 +298,7 @@ class MainWindow(QMainWindow):
             elif action.text() == "Pan":
                 action.setToolTip("Перемещать график")
 
-        self.open_docs_a = QAction("Docs")
+        self.open_docs_a = QAction("Документация")
         self.open_docs_a.setIcon(QIcon("files/docs.png"))
         self.open_docs_a.triggered.connect(self.open_docs)
         self.navbar.addAction(self.open_docs_a)
