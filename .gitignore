@@ -1,2 +1,4 @@
 build/*
 setup.py
+/.idea
+/.__pycache__
